@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>InfraOS — Network Control</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root {
+    --bg: #0B0E14;
+    --panel: #12161F;
+    --panel-border: #1E2430;
+    --text: #D7DCE5;
+    --text-dim: #6B7484;
+    --amber: #E8A33D;
+    --teal: #3DDC97;
+    --red: #E8615D;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Inter', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--amber); color: #14110A; }
+  a { color: inherit; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px; border-bottom: 1px solid var(--panel-border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand .mark {
+    width: 10px; height: 10px; border-radius: 2px; background: var(--amber);
+    box-shadow: 0 0 12px var(--amber);
+  }
+  .brand h1 { font-size: 16px; letter-spacing: 0.08em; margin: 0; font-weight: 600; }
+  .brand small { color: var(--text-dim); font-family: var(--mono); font-size: 11px; }
+  nav { display: flex; gap: 4px; }
+  nav button {
+    background: transparent; border: 1px solid transparent; color: var(--text-dim);
+    padding: 8px 14px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em;
+    cursor: pointer; border-radius: 6px; transition: all .15s ease;
+  }
+  nav button:hover { color: var(--text); }
+  nav button.active { color: var(--bg); background: var(--amber); font-weight: 600; }
+
+  main { padding: 28px; max-width: 1100px; margin: 0 auto; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 10px; padding: 20px; margin-bottom: 20px;
+  }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-dim); margin: 0 0 16px 0; font-weight: 600;
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; font-family: var(--mono); }
+  input, select {
+    width: 100%; background: #0D1017; border: 1px solid var(--panel-border);
+    color: var(--text); padding: 9px 10px; border-radius: 6px; font-family: var(--mono);
+    font-size: 13px; margin-bottom: 12px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--amber); }
+  button.primary {
+    background: var(--amber); color: #14110A; border: none; padding: 10px 18px;
+    border-radius: 6px; font-weight: 600; font-family: var(--sans); font-size: 13px;
+    cursor: pointer;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: 0.5; cursor: default; }
+
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+  th { text-align: left; color: var(--text-dim); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--panel-border); }
+  td { padding: 9px 10px; border-bottom: 1px solid #171B24; }
+  .empty { color: var(--text-dim); font-family: var(--mono); font-size: 12.5px; padding: 6px 2px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 10.5px; font-family: var(--mono); font-weight: 600; }
+  .badge.up, .badge.allow, .badge.pass { background: rgba(61,220,151,0.12); color: var(--teal); }
+  .badge.down, .badge.deny, .badge.fail { background: rgba(232,97,93,0.12); color: var(--red); }
+
+  /* --- Diagnostics trace: the signature element --- */
+  .trace {
+    position: relative; padding-left: 26px; margin-top: 10px;
+  }
+  .trace::before {
+    content: ''; position: absolute; left: 9px; top: 6px; bottom: 6px;
+    width: 2px; background: linear-gradient(var(--panel-border), var(--panel-border));
+  }
+  .hop { position: relative; padding: 14px 0 14px 16px; }
+  .hop::before {
+    content: ''; position: absolute; left: -21px; top: 18px;
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid var(--bg); z-index: 1;
+  }
+  .hop.pass::before { background: var(--teal); box-shadow: 0 0 8px rgba(61,220,151,0.6); }
+  .hop.fail::before { background: var(--red); box-shadow: 0 0 8px rgba(232,97,93,0.6); }
+  .hop .hop-type { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+  .hop .hop-reason { margin-top: 4px; font-size: 13.5px; }
+  .hop .hop-device { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .verdict {
+    margin-top: 16px; padding: 14px 16px; border-radius: 8px;
+    background: rgba(232,163,61,0.08); border: 1px solid rgba(232,163,61,0.25);
+    font-size: 13.5px;
+  }
+  .verdict .label { font-family: var(--mono); font-size: 10.5px; color: var(--amber); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+
+  .health-bar-track { background: #0D1017; border-radius: 4px; height: 6px; overflow: hidden; width: 90px; display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .health-bar-fill { height: 100%; background: var(--teal); }
+  .health-bar-fill.high { background: var(--red); }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--panel); border: 1px solid var(--panel-border); padding: 12px 16px; border-radius: 8px; font-size: 13px; max-width: 340px; }
+
+  .terminal {
+    background: #060809; border: 1px solid var(--panel-border); border-radius: 8px;
+    padding: 14px; font-family: var(--mono); font-size: 13px; height: 340px;
+    overflow-y: auto; white-space: pre-wrap; color: #B8F5C8;
+  }
+  .terminal-input {
+    display: flex; gap: 8px; margin-top: 10px;
+  }
+  .terminal-input input { margin-bottom: 0; flex: 1; }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .conn-dot.on { background: var(--teal); }
+  .conn-dot.off { background: var(--text-dim); }
+
+  /* --- Sci-fi topology canvas --- */
+  .topo-wrap { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+  .topo-canvas-outer {
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(61,220,151,0.06), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 28px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 28px),
+      #05070A;
+    border: 1px solid #1A2130; border-radius: 10px; overflow: hidden; position: relative;
+    min-height: 420px;
+  }
+  .topo-canvas-outer::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(5,7,10,0) 85%, rgba(5,7,10,0.9) 100%);
+  }
+  .topo-empty { padding: 60px 20px; text-align: center; color: var(--text-dim); font-family: var(--mono); font-size: 12.5px; }
+
+  .topo-node-box {
+    fill: #0D1420; stroke: #263042; stroke-width: 1;
+  }
+  .topo-node-label { font-family: var(--mono); font-size: 10.5px; fill: var(--text); }
+  .topo-node-sub { font-family: var(--mono); font-size: 8.5px; fill: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .topo-node-pulse { animation: node-pulse 2.4s ease-in-out infinite; }
+  @keyframes node-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .topo-link-glow-up { stroke: var(--teal); filter: drop-shadow(0 0 4px rgba(61,220,151,0.8)); }
+  .topo-link-glow-down { stroke: var(--red); filter: drop-shadow(0 0 4px rgba(232,97,93,0.8)); }
+  .topo-link-glow-disabled { stroke: #454E5E; stroke-dasharray: 4 5; }
+  .topo-flow-dash {
+    stroke-dasharray: 6 10;
+    animation: flow-move 1s linear infinite;
+  }
+  @keyframes flow-move {
+    to { stroke-dashoffset: -32; }
+  }
+  .topo-link-label {
+    font-family: var(--mono); font-size: 9px; fill: var(--text-dim);
+  }
+  .topo-link-label.tx { fill: var(--amber); }
+  .topo-link-label.rx { fill: var(--teal); }
+
+  .topo-legend { display: flex; gap: 16px; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); padding: 10px 4px 0; flex-wrap: wrap; }
+  .topo-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .topo-legend .dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  .link-form label { margin-top: 10px; }
+  .link-form .divider { border-top: 1px dashed var(--panel-border); margin: 14px 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+
+const { useState, useEffect, useCallback } = React;
+const API_BASE = window.INFRAOS_API_BASE || "";
+
+async function api(path, opts) {
+  const res = await fetch(API_BASE + path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok && res.status !== 207) throw new Error(body.detail || res.statusText);
+  return body;
+}
+
+function Header({ tab, setTab }) {
+  const tabs = [
+    ["devices", "Devices"],
+    ["health", "Health"],
+    ["logs", "Logs"],
+    ["diagnostics", "Diagnostics"],
+    ["topology", "Topology"],
+    ["cli", "CLI"],
+    ["audit", "Audit"],
+  ];
+  return (
+    <header>
+      <div className="brand">
+        <span className="mark"></span>
+        <h1>INFRAOS</h1>
+        <small>phase 1 · paloalto + fortigate</small>
+      </div>
+      <nav>
+        {tabs.map(([key, label]) => (
+          <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>
+            {label}
+          </button>
+        ))}
+      </nav>
+    </header>
+  );
+}
+
+function AddDeviceForm({ onAdded }) {
+  const [form, setForm] = useState({
+    hostname: "", mgmt_ip: "", vendor: "paloalto", device_type: "firewall",
+    username: "admin", password: "", api_key: "",
+  });
+  const [status, setStatus] = useState(null);
+  const update = (k) => (e) => {
+    const next = { ...form, [k]: e.target.value };
+    if (k === "vendor") {
+      next.device_type = e.target.value === "cisco_ios" ? "router" : "firewall";
+    }
+    setForm(next);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setStatus("saving");
+    try {
+      await api("/devices", { method: "POST", body: JSON.stringify(form) });
+      setStatus("ok");
+      onAdded();
+      setForm({ ...form, hostname: "", mgmt_ip: "", password: "", api_key: "" });
+    } catch (err) {
+      setStatus("error:" + err.message);
+    }
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <div className="grid-2">
+        <div>
+          <label>Hostname</label>
+          <input required value={form.hostname} onChange={update("hostname")} placeholder="edge-fw-01" />
+        </div>
+        <div>
+          <label>Management IP</label>
+          <input required value={form.mgmt_ip} onChange={update("mgmt_ip")} placeholder="10.0.0.1" />
+        </div>
+        <div>
+          <label>Vendor</label>
+          <select value={form.vendor} onChange={update("vendor")}>
+            <option value="paloalto">Palo Alto (PAN-OS)</option>
+            <option value="fortigate">Fortigate (FortiOS)</option>
+            <option value="cisco_ios">Cisco IOS</option>
+          </select>
+        </div>
+        <div>
+          <label>Device type</label>
+          {form.vendor === "cisco_ios" ? (
+            <select value={form.device_type} onChange={update("device_type")}>
+              <option value="router">Router</option>
+              <option value="switch">Switch</option>
+            </select>
+          ) : (
+            <select value="firewall" disabled><option value="firewall">Firewall</option></select>
+          )}
+        </div>
+        <div>
+          <label>Username</label>
+          <input value={form.username} onChange={update("username")} />
+        </div>
+        <div>
+          <label>Password (PAN-OS/Cisco) / API Key (Fortigate)</label>
+          <input value={form.vendor === "fortigate" ? form.api_key : form.password}
+                 onChange={update(form.vendor === "fortigate" ? "api_key" : "password")}
+                 type="password" />
+        </div>
+      </div>
+      <button className="primary" type="submit" disabled={status === "saving"}>
+        {status === "saving" ? "Onboarding…" : "Onboard device"}
+      </button>
+      {status && status.startsWith("error") && (
+        <div className="empty" style={{ color: "var(--red)", marginTop: 10 }}>{status.slice(6)}</div>
+      )}
+    </form>
+  );
+}
+
+function DevicesTab() {
+  const [devices, setDevices] = useState([]);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    try { setDevices(await api("/devices")); }
+    catch (err) { setError(err.message); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <React.Fragment>
+      <div className="panel">
+        <h2>Onboard a firewall</h2>
+        <AddDeviceForm onAdded={load} />
+      </div>
+      <div className="panel">
+        <h2>Onboarded devices</h2>
+        {error && <div className="empty" style={{ color: "var(--red)" }}>{error} — is the InfraOS API running at {API_BASE}?</div>}
+        {devices.length === 0 && !error && <div className="empty">No devices onboarded yet.</div>}
+        {devices.length > 0 && (
+          <table>
+            <thead>
+              <tr><th>Hostname</th><th>Vendor</th><th>Mgmt IP</th><th>Model</th><th>OS Version</th><th>Serial</th></tr>
+            </thead>
+            <tbody>
+              {devices.map((d) => (
+                <tr key={d.device_id}>
+                  <td>{d.hostname}</td>
+                  <td>{d.vendor}</td>
+                  <td>{d.mgmt_ip}</td>
+                  <td>{d.model || "—"}</td>
+                  <td>{d.os_version || "—"}</td>
+                  <td>{d.serial_number || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </React.Fragment>
+  );
+}
+
+function HealthTab() {
+  const [devices, setDevices] = useState([]);
+  const [selected, setSelected] = useState("");
+  const [history, setHistory] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => { api("/devices").then(setDevices).catch((e) => setError(e.message)); }, []);
+
+  const loadHistory = async (deviceId) => {
+    setSelected(deviceId);
+    if (!deviceId) return;
+    try { setHistory(await api(`/health/${deviceId}`)); }
+    catch (err) { setError(err.message); }
+  };
+
+  const pollNow = async () => {
+    if (!selected) return;
+    try { await api(`/health/${selected}/poll-now`, { method: "POST" }); loadHistory(selected); }
+    catch (err) { setError(err.message); }
+  };
+
+  const latest = history[history.length - 1];
+
+  return (
+    <div className="panel">
+      <h2>Device health</h2>
+      <label>Device</label>
+      <select value={selected} onChange={(e) => loadHistory(e.target.value)}>
+        <option value="">Select a device…</option>
+        {devices.map((d) => <option key={d.device_id} value={d.device_id}>{d.hostname} ({d.vendor})</option>)}
+      </select>
+      {error && <div className="empty" style={{ color: "var(--red)" }}>{error}</div>}
+      {selected && (
+        <React.Fragment>
+          <button className="primary" onClick={pollNow} style={{ marginBottom: 16 }}>Poll now</button>
+          {latest ? (
+            <table>
+              <tbody>
+                <tr><td>CPU</td><td>
+                  <span className={`health-bar-track`}><span className={`health-bar-fill ${latest.cpu_pct > 80 ? "high" : ""}`} style={{ width: `${latest.cpu_pct || 0}%` }}></span></span>
+                  {latest.cpu_pct != null ? `${latest.cpu_pct}%` : "n/a"}
+                </td></tr>
+                <tr><td>Memory</td><td>
+                  <span className={`health-bar-track`}><span className={`health-bar-fill ${latest.memory_pct > 80 ? "high" : ""}`} style={{ width: `${latest.memory_pct || 0}%` }}></span></span>
+                  {latest.memory_pct != null ? `${latest.memory_pct}%` : "n/a"}
+                </td></tr>
+                <tr><td>Active sessions</td><td>{latest.active_sessions ?? "n/a"}</td></tr>
+                <tr><td>Last polled</td><td>{new Date(latest.timestamp).toLocaleString()}</td></tr>
+              </tbody>
+            </table>
+          ) : <div className="empty">No health data yet — click "Poll now".</div>}
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
+function LogsTab() {
+  const [filters, setFilters] = useState({ src_ip: "", dst_ip: "", action: "", since_minutes: 60 });
+  const [results, setResults] = useState([]);
+  const [error, setError] = useState(null);
+
+  const search = async (e) => {
+    e && e.preventDefault();
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+    try { setResults(await api(`/logs?${params.toString()}`)); }
+    catch (err) { setError(err.message); }
+  };
+
+  return (
+    <div className="panel">
+      <h2>Log search</h2>
+      <form onSubmit={search}>
+        <div className="grid-2">
+          <div><label>Source IP</label><input value={filters.src_ip} onChange={(e) => setFilters({ ...filters, src_ip: e.target.value })} placeholder="10.1.1.5" /></div>
+          <div><label>Destination IP</label><input value={filters.dst_ip} onChange={(e) => setFilters({ ...filters, dst_ip: e.target.value })} placeholder="157.240.1.1" /></div>
+          <div>
+            <label>Action</label>
+            <select value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value })}>
+              <option value="">Any</option><option value="allow">Allow</option><option value="deny">Deny</option>
+            </select>
+          </div>
+          <div><label>Since (minutes)</label><input type="number" value={filters.since_minutes} onChange={(e) => setFilters({ ...filters, since_minutes: e.target.value })} /></div>
+        </div>
+        <button className="primary" type="submit">Search logs</button>
+      </form>
+      {error && <div className="empty" style={{ color: "var(--red)", marginTop: 10 }}>{error}</div>}
+      <div style={{ marginTop: 16 }}>
+        {results.length === 0 ? <div className="empty">No matching log events.</div> : (
+          <table>
+            <thead><tr><th>Time</th><th>Device</th><th>Src</th><th>Dst</th><th>Action</th></tr></thead>
+            <tbody>
+              {results.map((e, i) => (
+                <tr key={i}>
+                  <td>{new Date(e.timestamp).toLocaleString()}</td>
+                  <td>{e.device_id}</td><td>{e.src_ip}</td><td>{e.dst_ip}</td>
+                  <td><span className={`badge ${e.action}`}>{e.action}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticsTab({ onTraceComplete, onViewTopology }) {
+  const [form, setForm] = useState({ src_ip: "", dst_ip: "", port: 443, protocol: "tcp" });
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const run = async (e) => {
+    e.preventDefault();
+    setLoading(true); setError(null);
+    try {
+      const r = await api("/diagnostics", { method: "POST", body: JSON.stringify(form) });
+      setResult(r);
+      onTraceComplete && onTraceComplete(r.hops.map((h) => h.device_id));
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <React.Fragment>
+      <div className="panel">
+        <h2>Why can't this flow reach its destination?</h2>
+        <form onSubmit={run}>
+          <div className="grid-2">
+            <div><label>Source IP (the user)</label><input required value={form.src_ip} onChange={(e) => setForm({ ...form, src_ip: e.target.value })} placeholder="10.1.1.5" /></div>
+            <div><label>Destination IP / App</label><input required value={form.dst_ip} onChange={(e) => setForm({ ...form, dst_ip: e.target.value })} placeholder="157.240.1.1" /></div>
+            <div><label>Port</label><input type="number" value={form.port} onChange={(e) => setForm({ ...form, port: Number(e.target.value) })} /></div>
+            <div>
+              <label>Protocol</label>
+              <select value={form.protocol} onChange={(e) => setForm({ ...form, protocol: e.target.value })}>
+                <option value="tcp">TCP</option><option value="udp">UDP</option>
+              </select>
+            </div>
+          </div>
+          <button className="primary" type="submit" disabled={loading}>{loading ? "Tracing…" : "Run trace"}</button>
+        </form>
+        {error && <div className="empty" style={{ color: "var(--red)", marginTop: 10 }}>{error}</div>}
+      </div>
+
+      {result && (
+        <div className="panel">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <h2>Trace result</h2>
+            <span className="empty" style={{ display: "inline" }}>
+              path: {result.path_source === "topology" ? "actual wired topology" : "checked every onboarded device (no topology wired yet)"}
+            </span>
+          </div>
+          {result.hops.length === 0 ? (
+            <div className="empty">No hops to show — {result.verdict}</div>
+          ) : (
+            <div className="trace">
+              {result.hops.map((hop, i) => (
+                <div key={i} className={`hop ${hop.passed ? "pass" : "fail"}`}>
+                  <div className="hop-type">{hop.hop_type}</div>
+                  <div className="hop-reason">{hop.reason}</div>
+                  <div className="hop-device">{hop.device_id}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="verdict">
+            <div className="label">Root cause</div>
+            {result.verdict}
+          </div>
+          {result.hops.length > 0 && (
+            <button className="primary" onClick={onViewTopology} style={{ marginTop: 14 }}>
+              View traced path on topology
+            </button>
+          )}
+        </div>
+      )}
+    </React.Fragment>
+  );
+}
+
+// --- Topology layout: turns an arbitrary set of links into left-to-right
+// layers (LAN -> switch -> router -> firewall -> ..., or whatever order
+// the admin actually wired it) using a simple longest-path layering,
+// same idea Kahn's algorithm uses for topological sort.
+function layoutTopology(nodes, links) {
+  const nodeIds = nodes.map((n) => n.device_id);
+  const incoming = {}; const outgoing = {};
+  nodeIds.forEach((id) => { incoming[id] = []; outgoing[id] = []; });
+  links.forEach((l) => {
+    if (outgoing[l.device_a]) outgoing[l.device_a].push(l.device_b);
+    if (incoming[l.device_b]) incoming[l.device_b].push(l.device_a);
+  });
+
+  const layer = {};
+  const queue = nodeIds.filter((id) => incoming[id].length === 0);
+  queue.forEach((id) => (layer[id] = 0));
+  const visited = new Set(queue);
+  let frontier = queue;
+  let depth = 0;
+  while (frontier.length > 0 && depth < nodeIds.length) {
+    depth += 1;
+    const next = [];
+    frontier.forEach((id) => {
+      (outgoing[id] || []).forEach((child) => {
+        const candidate = (layer[id] || 0) + 1;
+        if (layer[child] === undefined || candidate > layer[child]) layer[child] = candidate;
+        if (!visited.has(child)) { visited.add(child); next.push(child); }
+      });
+    });
+    frontier = next;
+  }
+  nodeIds.forEach((id) => { if (layer[id] === undefined) layer[id] = 0; });
+
+  const byLayer = {};
+  nodeIds.forEach((id) => {
+    const l = layer[id];
+    byLayer[l] = byLayer[l] || [];
+    byLayer[l].push(id);
+  });
+
+  const colWidth = 190, rowHeight = 90, padX = 90, padY = 60;
+  const positions = {};
+  Object.keys(byLayer).sort((a, b) => a - b).forEach((l) => {
+    byLayer[l].forEach((id, i) => {
+      positions[id] = { x: padX + Number(l) * colWidth, y: padY + i * rowHeight };
+    });
+  });
+  const maxLayer = Math.max(0, ...Object.keys(byLayer).map(Number));
+  const maxRows = Math.max(1, ...Object.values(byLayer).map((arr) => arr.length));
+  return { positions, width: padX * 2 + maxLayer * colWidth, height: padY * 2 + (maxRows - 1) * rowHeight };
+}
+
+function linkStatusClass(status) {
+  if (status.admin_status === "disabled") return "disabled";
+  if (status.oper_status === "down") return "down";
+  if (status.oper_status === "up") return "up";
+  return "unknown";
+}
+
+function TopologyCanvas({ nodes, links, highlightIds }) {
+  if (nodes.length === 0) {
+    return <div className="topo-empty">No devices onboarded yet — nothing to draw.</div>;
+  }
+  const { positions, width, height } = layoutTopology(nodes, links);
+  const boxW = 140, boxH = 46;
+  const highlightSet = new Set(highlightIds || []);
+
+  return (
+    <React.Fragment>
+      <svg width="100%" height={Math.max(height, 300)} viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
+        {links.map((l, i) => {
+          const a = positions[l.device_a], b = positions[l.device_b];
+          if (!a || !b) return null;
+          const x1 = a.x + boxW, y1 = a.y + boxH / 2, x2 = b.x, y2 = b.y + boxH / 2;
+          const statusA = linkStatusClass(l.a_status), statusB = linkStatusClass(l.b_status);
+          const worstStatus = [statusA, statusB].includes("disabled") ? "disabled" : [statusA, statusB].includes("down") ? "down" : "up";
+          const glowClass = worstStatus === "up" ? "topo-link-glow-up" : worstStatus === "down" ? "topo-link-glow-down" : "topo-link-glow-disabled";
+          const flowing = worstStatus === "up" && ((l.a_status.tx_mbps || 0) + (l.a_status.rx_mbps || 0) > 0);
+          const onTracedPath = highlightSet.has(l.device_a) && highlightSet.has(l.device_b);
+          const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+          return (
+            <g key={i}>
+              {onTracedPath && (
+                <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth="7" stroke="var(--amber)" opacity="0.25" />
+              )}
+              <line x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth="2"
+                    className={`${glowClass} ${flowing ? "topo-flow-dash" : ""}`} fill="none" />
+              {(l.a_status.tx_mbps != null || l.a_status.rx_mbps != null) && (
+                <React.Fragment>
+                  <text x={midX} y={midY - 10} textAnchor="middle" className="topo-link-label tx">
+                    ↑{(l.a_status.tx_mbps || 0).toFixed(1)}Mbps
+                  </text>
+                  <text x={midX} y={midY + 14} textAnchor="middle" className="topo-link-label rx">
+                    ↓{(l.a_status.rx_mbps || 0).toFixed(1)}Mbps
+                  </text>
+                </React.Fragment>
+              )}
+            </g>
+          );
+        })}
+        {nodes.map((n) => {
+          const p = positions[n.device_id];
+          if (!p) return null;
+          const traced = highlightSet.has(n.device_id);
+          return (
+            <g key={n.device_id} transform={`translate(${p.x},${p.y})`}>
+              {traced && <rect x="-4" y="-4" width={boxW + 8} height={boxH + 8} rx="10" fill="none" stroke="var(--amber)" strokeWidth="2" opacity="0.7" />}
+              <rect width={boxW} height={boxH} rx="8" className="topo-node-box topo-node-pulse" />
+              <circle cx="12" cy="12" r="4" fill="var(--teal)" />
+              <text x="24" y="17" className="topo-node-label">{n.hostname}</text>
+              <text x="10" y="34" className="topo-node-sub">{n.device_type} · {n.vendor}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="topo-legend">
+        <span><span className="dot" style={{ background: "var(--teal)" }}></span>link up</span>
+        <span><span className="dot" style={{ background: "var(--red)" }}></span>link down</span>
+        <span><span className="dot" style={{ background: "#454E5E" }}></span>disabled</span>
+        {highlightIds && highlightIds.length > 0 && (
+          <span><span className="dot" style={{ background: "var(--amber)" }}></span>last diagnostics trace</span>
+        )}
+        <span>refreshing every 5s</span>
+      </div>
+    </React.Fragment>
+  );
+}
+
+function DefineLinkForm({ devices, onCreated }) {
+  const [deviceA, setDeviceA] = useState("");
+  const [deviceB, setDeviceB] = useState("");
+  const [ifacesA, setIfacesA] = useState([]);
+  const [ifacesB, setIfacesB] = useState([]);
+  const [ifaceA, setIfaceA] = useState("");
+  const [ifaceB, setIfaceB] = useState("");
+  const [error, setError] = useState(null);
+
+  const loadIfaces = async (deviceId, setter, setSelected) => {
+    setSelected("");
+    if (!deviceId) { setter([]); return; }
+    try { setter(await api(`/topology/interfaces/${deviceId}`)); }
+    catch (err) { setError(err.message); }
+  };
+
+  const selectedA = ifacesA.find((i) => i.if_name === ifaceA);
+  const selectedB = ifacesB.find((i) => i.if_name === ifaceB);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      await api("/topology/links", {
+        method: "POST",
+        body: JSON.stringify({ device_a: deviceA, interface_a: ifaceA, device_b: deviceB, interface_b: ifaceB }),
+      });
+      onCreated();
+      setDeviceA(""); setDeviceB(""); setIfacesA([]); setIfacesB([]); setIfaceA(""); setIfaceB("");
+    } catch (err) { setError(err.message); }
+  };
+
+  return (
+    <form className="link-form" onSubmit={submit}>
+      <label>Device A</label>
+      <select value={deviceA} onChange={(e) => { setDeviceA(e.target.value); loadIfaces(e.target.value, setIfacesA, setIfaceA); }}>
+        <option value="">Select…</option>
+        {devices.map((d) => <option key={d.device_id} value={d.device_id}>{d.hostname}</option>)}
+      </select>
+      <label>Interface A</label>
+      <select value={ifaceA} onChange={(e) => setIfaceA(e.target.value)} disabled={!deviceA}>
+        <option value="">Select…</option>
+        {ifacesA.map((i) => <option key={i.if_name} value={i.if_name}>{i.if_name}</option>)}
+      </select>
+      {selectedA && (
+        <div className="empty" style={{ marginTop: -6, marginBottom: 10 }}>
+          {selectedA.ip_address || "no IP"} · {selectedA.mac_address || "no MAC"} · auto-fetched
+        </div>
+      )}
+
+      <div className="divider"></div>
+
+      <label>Device B</label>
+      <select value={deviceB} onChange={(e) => { setDeviceB(e.target.value); loadIfaces(e.target.value, setIfacesB, setIfaceB); }}>
+        <option value="">Select…</option>
+        {devices.map((d) => <option key={d.device_id} value={d.device_id}>{d.hostname}</option>)}
+      </select>
+      <label>Interface B</label>
+      <select value={ifaceB} onChange={(e) => setIfaceB(e.target.value)} disabled={!deviceB}>
+        <option value="">Select…</option>
+        {ifacesB.map((i) => <option key={i.if_name} value={i.if_name}>{i.if_name}</option>)}
+      </select>
+      {selectedB && (
+        <div className="empty" style={{ marginTop: -6, marginBottom: 10 }}>
+          {selectedB.ip_address || "no IP"} · {selectedB.mac_address || "no MAC"} · auto-fetched
+        </div>
+      )}
+
+      <button className="primary" type="submit" disabled={!ifaceA || !ifaceB} style={{ marginTop: 10, width: "100%" }}>
+        Add link
+      </button>
+      {error && <div className="empty" style={{ color: "var(--red)", marginTop: 10 }}>{error}</div>}
+      {ifacesA.length === 0 && deviceA && (
+        <div className="empty" style={{ marginTop: 10 }}>
+          No live interface data yet for this device — it's fetched by the 5s poller, give it a moment after onboarding.
+        </div>
+      )}
+    </form>
+  );
+}
+
+function DriftPanel({ drift }) {
+  if (drift.length === 0) return null;
+  const labelFor = (d) => {
+    if (d.drift_type === "missing_discovered") return "drawn but not seen live";
+    if (d.drift_type === "missing_manual") return "seen live but never drawn";
+    return "interface mismatch";
+  };
+  return (
+    <div className="panel" style={{ marginTop: 0, borderColor: "rgba(232,97,93,0.35)" }}>
+      <h2 style={{ color: "var(--red)" }}>Topology drift detected</h2>
+      <table>
+        <thead><tr><th>Device A</th><th>Device B</th><th>Issue</th><th>Manual</th><th>Discovered</th></tr></thead>
+        <tbody>
+          {drift.map((d, i) => (
+            <tr key={i}>
+              <td>{d.device_a}</td><td>{d.device_b}</td>
+              <td><span className="badge fail">{labelFor(d)}</span></td>
+              <td>{d.manual_interfaces ? d.manual_interfaces.join(" ↔ ") : "—"}</td>
+              <td>{d.discovered_interfaces ? d.discovered_interfaces.join(" ↔ ") : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TopologyTab({ highlightIds }) {
+  const [graph, setGraph] = useState({ nodes: [], links: [] });
+  const [devices, setDevices] = useState([]);
+  const [drift, setDrift] = useState([]);
+  const [error, setError] = useState(null);
+  const [discovering, setDiscovering] = useState(false);
+
+  const loadGraph = useCallback(async () => {
+    try {
+      setGraph(await api("/topology/graph"));
+      setDrift(await api("/topology/drift"));
+    } catch (err) { setError(err.message); }
+  }, []);
+
+  useEffect(() => {
+    api("/devices").then(setDevices).catch(() => {});
+    loadGraph();
+    const id = setInterval(loadGraph, 5000);  // live refresh, matches the backend's 5s poller
+    return () => clearInterval(id);
+  }, [loadGraph]);
+
+  const discover = async () => {
+    setDiscovering(true);
+    try { await api("/topology/discover", { method: "POST" }); await loadGraph(); }
+    catch (err) { setError(err.message); }
+    finally { setDiscovering(false); }
+  };
+
+  return (
+    <div className="topo-wrap">
+      <div>
+        <div className="panel">
+          <h2>Network topology — live</h2>
+          <button className="primary" onClick={discover} disabled={discovering} style={{ marginBottom: 12 }}>
+            {discovering ? "Discovering (CDP/LLDP)…" : "Run discovery"}
+          </button>
+          {error && <div className="empty" style={{ color: "var(--red)", marginBottom: 10 }}>{error}</div>}
+          <div className="topo-canvas-outer">
+            <TopologyCanvas nodes={graph.nodes} links={graph.links} highlightIds={highlightIds} />
+          </div>
+        </div>
+        <DriftPanel drift={drift} />
+      </div>
+      <div className="panel" style={{ marginBottom: 0 }}>
+        <h2>Define a link</h2>
+        <DefineLinkForm devices={devices} onCreated={loadGraph} />
+      </div>
+    </div>
+  );
+}
+
+// Client-side mirror of the backend's config-command heuristic --
+// used only to decide whether to show a confirmation prompt before
+// sending; the backend is still the real authority (it re-checks and
+// tags every command in the audit transcript regardless of this).
+const CONFIG_KEYWORDS = ["configure", "conf t", "set ", "delete ", "commit", "edit ", "no ", "write memory", "copy running-config", "clear "];
+function looksLikeConfigCommand(cmd) {
+  const lowered = cmd.trim().toLowerCase();
+  return CONFIG_KEYWORDS.some((kw) => lowered.startsWith(kw));
+}
+
+function CliTab() {
+  const [devices, setDevices] = useState([]);
+  const [selected, setSelected] = useState("");
+  const [connected, setConnected] = useState(false);
+  const [lines, setLines] = useState([]);
+  const [command, setCommand] = useState("");
+  const [quickCommands, setQuickCommands] = useState({});
+  const wsRef = React.useRef(null);
+  const termRef = React.useRef(null);
+
+  useEffect(() => { api("/devices").then(setDevices).catch(() => {}); }, []);
+  useEffect(() => { if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight; }, [lines]);
+
+  const connect = () => {
+    if (!selected) return;
+    api(`/cli/quick-commands/${selected}`).then(setQuickCommands).catch(() => setQuickCommands({}));
+    const wsBase = API_BASE
+      ? API_BASE.replace(/^http/, "ws")
+      : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
+    const ws = new WebSocket(`${wsBase}/cli/ws/${selected}?admin_user=vish&role=config_admin`);
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
+    ws.onmessage = (evt) => setLines((prev) => [...prev, evt.data]);
+    wsRef.current = ws;
+  };
+
+  const disconnect = () => { wsRef.current && wsRef.current.close(); };
+
+  const sendRaw = (cmd) => {
+    if (!wsRef.current) return;
+    const tag = looksLikeConfigCommand(cmd) ? "[CONFIG] " : "";
+    setLines((prev) => [...prev, `$ ${tag}${cmd}`]);
+    wsRef.current.send(cmd);
+  };
+
+  const send = (e) => {
+    e.preventDefault();
+    if (!command.trim() || !wsRef.current) return;
+    if (looksLikeConfigCommand(command)) {
+      const ok = window.confirm(
+        `This looks like a configuration change on the connected device:\n\n"${command}"\n\nSend it? This will be recorded in the audit log.`
+      );
+      if (!ok) return;
+    }
+    sendRaw(command);
+    setCommand("");
+  };
+
+  const runQuickCommand = (cmd) => {
+    if (!cmd) return;
+    const ok = window.confirm(`Run "${cmd}" on the connected device? This will be recorded in the audit log.`);
+    if (ok) sendRaw(cmd);
+  };
+
+  return (
+    <div className="panel">
+      <h2>Full CLI access</h2>
+      <div className="grid-2">
+        <div>
+          <label>Device</label>
+          <select value={selected} onChange={(e) => setSelected(e.target.value)} disabled={connected}>
+            <option value="">Select a device…</option>
+            {devices.map((d) => <option key={d.device_id} value={d.device_id}>{d.hostname} ({d.vendor})</option>)}
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 12 }}>
+          {!connected ? (
+            <button className="primary" onClick={connect} disabled={!selected}>Connect</button>
+          ) : (
+            <button className="primary" onClick={disconnect} style={{ background: "var(--red)" }}>Disconnect</button>
+          )}
+        </div>
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <span className={`conn-dot ${connected ? "on" : "off"}`}></span>
+        <span className="empty" style={{ display: "inline" }}>{connected ? "session active — every command is recorded for audit, config changes are flagged" : "not connected"}</span>
+      </div>
+      {connected && (quickCommands.enter_config_mode || quickCommands.save_config) && (
+        <div style={{ marginBottom: 10, display: "flex", gap: 8 }}>
+          {quickCommands.enter_config_mode && (
+            <button className="primary" style={{ background: "var(--panel)", border: "1px solid var(--panel-border)", color: "var(--text)" }}
+                    onClick={() => runQuickCommand(quickCommands.enter_config_mode)}>
+              Enter config mode
+            </button>
+          )}
+          {quickCommands.save_config && (
+            <button className="primary" style={{ background: "var(--panel)", border: "1px solid var(--panel-border)", color: "var(--text)" }}
+                    onClick={() => runQuickCommand(quickCommands.save_config)}>
+              Save / commit config
+            </button>
+          )}
+        </div>
+      )}
+      <div className="terminal" ref={termRef}>
+        {lines.length === 0 ? "// output will appear here" : lines.join("\n")}
+      </div>
+      <form className="terminal-input" onSubmit={send}>
+        <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="type a command…" disabled={!connected} />
+        <button className="primary" type="submit" disabled={!connected}>Send</button>
+      </form>
+    </div>
+  );
+}
+
+function AuditTab() {
+  const [entries, setEntries] = useState([]);
+  const [filters, setFilters] = useState({ device_id: "", admin_user: "", config_only: false });
+  const [devices, setDevices] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => { api("/devices").then(setDevices).catch(() => {}); }, []);
+
+  const search = async (e) => {
+    e && e.preventDefault();
+    const params = new URLSearchParams();
+    if (filters.device_id) params.set("device_id", filters.device_id);
+    if (filters.admin_user) params.set("admin_user", filters.admin_user);
+    if (filters.config_only) params.set("config_only", "true");
+    try { setEntries(await api(`/cli/audit?${params.toString()}`)); }
+    catch (err) { setError(err.message); }
+  };
+
+  useEffect(() => { search(); }, []);
+
+  const hostnameFor = (id) => (devices.find((d) => d.device_id === id) || {}).hostname || id;
+
+  return (
+    <div className="panel">
+      <h2>CLI audit trail</h2>
+      <form onSubmit={search}>
+        <div className="grid-2">
+          <div>
+            <label>Device</label>
+            <select value={filters.device_id} onChange={(e) => setFilters({ ...filters, device_id: e.target.value })}>
+              <option value="">All devices</option>
+              {devices.map((d) => <option key={d.device_id} value={d.device_id}>{d.hostname}</option>)}
+            </select>
+          </div>
+          <div>
+            <label>Admin user</label>
+            <input value={filters.admin_user} onChange={(e) => setFilters({ ...filters, admin_user: e.target.value })} placeholder="vish" />
+          </div>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--sans)", fontSize: 13, color: "var(--text)" }}>
+          <input type="checkbox" style={{ width: "auto", marginBottom: 0 }}
+                 checked={filters.config_only} onChange={(e) => setFilters({ ...filters, config_only: e.target.checked })} />
+          Configuration changes only
+        </label>
+        <button className="primary" type="submit" style={{ marginTop: 10 }}>Search</button>
+      </form>
+      {error && <div className="empty" style={{ color: "var(--red)", marginTop: 10 }}>{error}</div>}
+      <div style={{ marginTop: 16 }}>
+        {entries.length === 0 ? <div className="empty">No matching CLI activity.</div> : (
+          <table>
+            <thead><tr><th>Time</th><th>Device</th><th>Admin</th><th>Command</th><th>Type</th></tr></thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={i}>
+                  <td>{new Date(e.timestamp).toLocaleString()}</td>
+                  <td>{hostnameFor(e.device_id)}</td>
+                  <td>{e.admin_user}</td>
+                  <td style={{ fontFamily: "var(--mono)" }}>{e.command}</td>
+                  <td><span className={`badge ${e.is_config ? "fail" : "pass"}`}>{e.is_config ? "config" : "read"}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState("devices");
+  const [tracedPath, setTracedPath] = useState([]);
+  return (
+    <React.Fragment>
+      <Header tab={tab} setTab={setTab} />
+      <main>
+        {tab === "devices" && <DevicesTab />}
+        {tab === "health" && <HealthTab />}
+        {tab === "logs" && <LogsTab />}
+        {tab === "diagnostics" && (
+          <DiagnosticsTab
+            onTraceComplete={setTracedPath}
+            onViewTopology={() => setTab("topology")}
+          />
+        )}
+        {tab === "topology" && <TopologyTab highlightIds={tracedPath} />}
+        {tab === "cli" && <CliTab />}
+        {tab === "audit" && <AuditTab />}
+      </main>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
